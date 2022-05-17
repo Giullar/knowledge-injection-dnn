@@ -76,8 +76,9 @@ class PLSEnv(gym.Env):
         :return: numpy.array; the observations.
         """
         self._instance = PLSInstance(n=self._dim)
-        obs = self._instance.square.reshape(-1, 1)
-
+        #obs = self._instance.square.reshape(-1, 1)
+        obs = self._instance.square.reshape(-1)
+        
         return obs
 
     def render(self, mode="human"):
@@ -88,6 +89,98 @@ class PLSEnv(gym.Env):
         """
         self._instance.visualize()
 
+        
+class PLSEnv_random_start(gym.Env):
+    """
+    Gym wrapper for the PLS.
+    Attributes:
+        dim: int; PLS size.
+        instance: PLSInstance; the PLS instance.
+    """
+
+    # This is a gym.Env variable that is required by garage for rendering
+    metadata = {
+        "render.modes": ["ascii"]
+    }
+
+    def __init__(self, dim, n_rnd_insertions):
+        super(PLSEnv_random_start, self).__init__()
+
+        self._dim = dim
+        self._n_rnd_insertions = n_rnd_insertions
+        self.action_space = gym.spaces.Discrete(dim**3)
+        self.observation_space = gym.spaces.Box(low=0, high=1, dtype=np.int8, shape=(dim**3, ))
+
+    @property
+    def dim(self):
+        """
+        The PLS size.
+        :return: int; the PLS size.
+        """
+        return self._dim
+
+    def step(self, action):
+        """
+        A step in the environment.
+        :param action: int; integer corresponding to the PLS cell and value to assign.
+        :return: numpy.array, float, boolean, dict; observations, reward, end of episode flag and additional info.
+        """
+        assert 0 <= action < self.action_space.n, "Out of actions space"
+        x_coor, y_coor, val = np.unravel_index(action, shape=(self._dim, self._dim, self._dim))
+        feasible = self._instance.assign(cell_x=x_coor, cell_y=y_coor, num=val)
+        count_assigned_vars = np.sum(self._instance.square)
+        solved = False
+        if feasible:
+            #reward = -1
+            reward = 1
+            if count_assigned_vars == self._dim ** 2:
+                done = True
+                solved = True
+            else:
+                done = False
+        else:
+            reward = -1000
+            done = True
+
+        obs = self._instance.square.reshape(-1)
+        info = dict()
+        info['Feasible'] = feasible
+        info['Num. assigned vars'] = count_assigned_vars
+        info['Solved'] = solved
+
+        return obs, reward, done, info
+
+    def reset(self):
+        """
+        Reset the environment.
+        :return: numpy.array; the observations.
+        """
+        self._instance = PLSInstance(n=self._dim)
+        
+        # Perform the first n_rnd_insertions insertions at random
+        inserted_nums = 0
+        while inserted_nums < self._n_rnd_insertions:
+            action = np.random.randint(low=0, high=self.action_space.n, size=1)
+            obs, reward, done, info = self.step(action)
+            if done:
+                # Fail. Reset the latin square and retry.
+                self._instance = PLSInstance(n=self._dim)
+                inserted_nums = 0
+            else:
+                inserted_nums = inserted_nums + 1
+        
+        obs = self._instance.square.reshape(-1)
+        
+        return obs
+
+    def render(self, mode="human"):
+        """
+        Visualize the PLS assignments.
+        :param mode:
+        :return:
+        """
+        self._instance.visualize()
+        
 ########################################################################################################################
 
 
