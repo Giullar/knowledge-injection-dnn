@@ -131,8 +131,38 @@ class PLSEnv_random_start(gym.Env):
         count_assigned_vars = np.sum(self._instance.square)
         solved = False
         if feasible:
-            #reward = -1
-            reward = 1
+            reward = 0
+            if count_assigned_vars == self._dim ** 2:
+                done = True
+                solved = True
+                reward = 1
+            else:
+                done = False
+        else:
+            reward = -1
+            done = True
+
+        obs = self._instance.square.reshape(-1)
+        info = dict()
+        info['Feasible'] = feasible
+        info['Num. assigned vars'] = count_assigned_vars
+        info['Solved'] = solved
+
+        return obs, reward, done, info
+
+    def step_original(self, action):
+        """
+        A step in the environment.
+        :param action: int; integer corresponding to the PLS cell and value to assign.
+        :return: numpy.array, float, boolean, dict; observations, reward, end of episode flag and additional info.
+        """
+        assert 0 <= action < self.action_space.n, "Out of actions space"
+        x_coor, y_coor, val = np.unravel_index(action, shape=(self._dim, self._dim, self._dim))
+        feasible = self._instance.assign(cell_x=x_coor, cell_y=y_coor, num=val)
+        count_assigned_vars = np.sum(self._instance.square)
+        solved = False
+        if feasible:
+            reward = -1
             if count_assigned_vars == self._dim ** 2:
                 done = True
                 solved = True
@@ -149,7 +179,7 @@ class PLSEnv_random_start(gym.Env):
         info['Solved'] = solved
 
         return obs, reward, done, info
-
+    
     def reset(self):
         """
         Reset the environment.
