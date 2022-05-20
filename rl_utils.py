@@ -7,6 +7,7 @@
 import gym
 import numpy as np
 from utility import PLSInstance
+from latinsq import LatinSquare
 
 ########################################################################################################################
 
@@ -89,8 +90,8 @@ class PLSEnv(gym.Env):
         """
         self._instance.visualize()
 
-        
-class PLSEnv_random_start(gym.Env):
+
+class PLSEnv_partially_filled(gym.Env):
     """
     Gym wrapper for the PLS.
     Attributes:
@@ -102,14 +103,19 @@ class PLSEnv_random_start(gym.Env):
     metadata = {
         "render.modes": ["ascii"]
     }
+    
 
-    def __init__(self, dim, n_rnd_insertions):
-        super(PLSEnv_random_start, self).__init__()
+    def __init__(self, dim, perc_to_fill=None):
+        super(PLSEnv_partially_filled, self).__init__()
 
         self._dim = dim
-        self._n_rnd_insertions = n_rnd_insertions
         self.action_space = gym.spaces.Discrete(dim**3)
         self.observation_space = gym.spaces.Box(low=0, high=1, dtype=np.int8, shape=(dim**3, ))
+        self._perc_to_fill_list = [0.25, 0.50, 0.75]
+        
+        if perc_to_fill!=None and (perc_to_fill<0 or perc_to_fill>1):
+            raise Exception("perc_to_fill must be a value between 0 and 1.")
+        self._perc_to_fill = perc_to_fill
 
     @property
     def dim(self):
@@ -149,55 +155,32 @@ class PLSEnv_random_start(gym.Env):
         info['Solved'] = solved
 
         return obs, reward, done, info
-
-    def step_original(self, action):
-        """
-        A step in the environment.
-        :param action: int; integer corresponding to the PLS cell and value to assign.
-        :return: numpy.array, float, boolean, dict; observations, reward, end of episode flag and additional info.
-        """
-        assert 0 <= action < self.action_space.n, "Out of actions space"
-        x_coor, y_coor, val = np.unravel_index(action, shape=(self._dim, self._dim, self._dim))
-        feasible = self._instance.assign(cell_x=x_coor, cell_y=y_coor, num=val)
-        count_assigned_vars = np.sum(self._instance.square)
-        solved = False
-        if feasible:
-            reward = -1
-            if count_assigned_vars == self._dim ** 2:
-                done = True
-                solved = True
-            else:
-                done = False
-        else:
-            reward = -1000
-            done = True
-
-        obs = self._instance.square.reshape(-1)
-        info = dict()
-        info['Feasible'] = feasible
-        info['Num. assigned vars'] = count_assigned_vars
-        info['Solved'] = solved
-
-        return obs, reward, done, info
     
     def reset(self):
         """
-        Reset the environment.
+        Reset the environment and construct a new partially filled latin square.
         :return: numpy.array; the observations.
         """
         self._instance = PLSInstance(n=self._dim)
         
-        # Perform the first n_rnd_insertions insertions at random
-        inserted_nums = 0
-        while inserted_nums < self._n_rnd_insertions:
-            action = np.random.randint(low=0, high=self.action_space.n, size=1)
-            obs, reward, done, info = self.step(action)
-            if done:
-                # Fail. Reset the latin square and retry.
-                self._instance = PLSInstance(n=self._dim)
-                inserted_nums = 0
-            else:
-                inserted_nums = inserted_nums + 1
+        total_nums = self._dim ** 2
+        if self._perc_to_fill==None:
+            #Sample a percentage at random. (used during training)
+            p = np.random.choice(self._perc_to_fill_list)
+        else:
+            p = self._perc_to_fill
+        # Sample the positions of the latin square to fill
+        total_grid_cells = self._dim ** 2
+        n_cells_to_fill = int(p*self._dim ** 2)
+        cells_to_fill = np.random.choice(total_grid_cells, n_cells_to_fill, replace=False)
+        # Generate a full latin square
+        ls = LatinSquare.random(n=self._dim)
+        
+        for cell in cells_to_fill:
+            x_coor, y_coor = np.unravel_index(cell, shape=(self._dim, self._dim))
+            value_to_insert = ls[x_coor, y_coor] - 1
+            feasible = self._instance.assign(cell_x=x_coor, cell_y=y_coor, num=value_to_insert)
+            assert feasible, "Error during latin square initialization"
         
         obs = self._instance.square.reshape(-1)
         
@@ -210,7 +193,7 @@ class PLSEnv_random_start(gym.Env):
         :return:
         """
         self._instance.visualize()
-        
+
 ########################################################################################################################
 
 
